@@ -1,0 +1,266 @@
+from flask import Flask, request, jsonify
+import cv2
+import numpy as np
+import base64
+from ultralytics import YOLO
+import requests
+import json
+from datetime import datetime
+import logging
+
+app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
+
+# Initialize YOLO model (YOLOv8n for speed)
+model = YOLO('yolov8n.pt')
+
+# Object importance weights for navigation assistance
+OBSTACLE_WEIGHTS = {
+    # Critical obstacles (highest priority)
+    'person': 10,
+    'car': 9,
+    'truck': 9,
+    'bus': 9,
+    'motorcycle': 8,
+    'bicycle': 7,
+    
+    # Structural obstacles
+    'stop sign': 8,
+    'traffic light': 7,
+    'fire hydrant': 6,
+    'bench': 5,
+    'chair': 4,
+    'dining table': 4,
+    
+    # Ground level obstacles
+    'suitcase': 6,
+    'backpack': 4,
+    'handbag': 3,
+    'bottle': 3,
+    'cup': 2,
+    
+    # Animals
+    'dog': 7,
+    'cat': 5,
+    'bird': 2,
+    
+    # Default weight for unspecified objects
+    'default': 3
+}
+
+# Ollama configuration (assuming local Ollama server)
+OLLAMA_URL = "http://localhost:11434/api/generate"
+MODEL_NAME = "llama3.2:1b"  # Lightweight model
+
+class ObjectDetector:
+    def __init__(self):
+        self.model = model
+    
+    def detect_objects(self, frame):
+        """Detect objects in frame and return results with importance scores"""
+        results = self.model(frame, conf=0.3, verbose=False)
+        detections = []
+        
+        for result in results:
+            boxes = result.boxes
+            if boxes is not None:
+                for box in boxes:
+                    # Get class name
+                    class_id = int(box.cls[0])
+                    class_name = self.model.names[class_id]
+                    confidence = float(box.conf[0])
+                    
+                    # Get bounding box coordinates
+                    x1, y1, x2, y2 = box.xyxy[0].tolist()
+                    
+                    # Calculate relative position and size
+                    frame_height, frame_width = frame.shape[:2]
+                    center_x = (x1 + x2) / 2 / frame_width
+                    center_y = (y1 + y2) / 2 / frame_height
+                    width = (x2 - x1) / frame_width
+                    height = (y2 - y1) / frame_height
+                    
+                    # Get importance weight
+                    importance = OBSTACLE_WEIGHTS.get(class_name, OBSTACLE_WEIGHTS['default'])
+                    
+                    detection = {
+                        'class': class_name,
+                        'confidence': confidence,
+                        'bbox': [x1, y1, x2, y2],
+                        'center': [center_x, center_y],
+                        'size': [width, height],
+                        'importance': importance,
+                        'position_desc': self._get_position_description(center_x, center_y)
+                    }
+                    detections.append(detection)
+        
+        return sorted(detections, key=lambda x: x['importance'], reverse=True)
+    
+    def _get_position_description(self, x, y):
+        """Convert normalized coordinates to position description"""
+        horizontal = "center"
+        if x < 0.33:
+            horizontal = "left"
+        elif x > 0.67:
+            horizontal = "right"
+        
+        vertical = "middle"
+        if y < 0.33:
+            vertical = "top"
+        elif y > 0.67:
+            vertical = "bottom"
+        
+        return f"{vertical}-{horizontal}"
+
+class SceneDescriber:
+    def __init__(self):
+        pass
+    
+    def create_scene_description(self, detections, frame_shape):
+        """Create a comprehensive scene description from detections"""
+        if not detections:
+            return "The path ahead appears clear with no significant obstacles detected."
+        
+        # Categorize detections by importance
+        critical_obstacles = [d for d in detections if d['importance'] >= 8]
+        moderate_obstacles = [d for d in detections if 5 <= d['importance'] < 8]
+        minor_obstacles = [d for d in detections if d['importance'] < 5]
+        
+        description_parts = []
+        
+        # Describe critical obstacles first
+        if critical_obstacles:
+            critical_desc = self._describe_obstacles(critical_obstacles, "CRITICAL")
+            description_parts.append(critical_desc)
+        
+        # Describe moderate obstacles
+        if moderate_obstacles:
+            moderate_desc = self._describe_obstacles(moderate_obstacles, "MODERATE")
+            description_parts.append(moderate_desc)
+        
+        # Briefly mention minor obstacles
+        if minor_obstacles and len(minor_obstacles) > 0:
+            minor_count = len(minor_obstacles)
+            description_parts.append(f"Additionally, there are {minor_count} minor items in the scene.")
+        
+        return " ".join(description_parts)
+    
+    def _describe_obstacles(self, obstacles, priority_level):
+        """Describe a group of obstacles"""
+        if not obstacles:
+            return ""
+        
+        descriptions = []
+        for obs in obstacles:
+            size_desc = "large" if obs['size'][0] * obs['size'][1] > 0.1 else "small"
+            desc = f"{size_desc} {obs['class']} in the {obs['position_desc']} area"
+            descriptions.append(desc)
+        
+        priority_text = f"{priority_level} ALERT: " if priority_level == "CRITICAL" else ""
+        return f"{priority_text}Detected {', '.join(descriptions)}."
+
+class NavigationAssistant:
+    def __init__(self):
+        pass
+    
+    def get_navigation_guidance(self, scene_description):
+        """Get navigation guidance from local LLM"""
+        prompt = f"""You are a helpful navigation assistant for someone who is visually impaired. Based on the following scene description, provide brief, clear, and casual directions on how to safely navigate around any obstacles. Keep your response under 2 sentences and be encouraging. If it is an emergency use an appropriate tone. You don't need to mention what you are, just give the instructions.
+
+Scene: {scene_description}
+
+Provide navigation advice:"""
+        
+        payload = {
+            "model": MODEL_NAME,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.3,
+                "top_p": 0.9,
+                "max_tokens": 100
+            }
+        }
+        
+        try:
+            response = requests.post(OLLAMA_URL, json=payload, timeout=2)
+            if response.status_code == 200:
+                result = response.json()
+                return result.get('response', 'Unable to generate guidance at this time.')
+            else:
+                return "Navigation system temporarily unavailable."
+        except requests.exceptions.RequestException as e:
+            logging.error(f"LLM request failed: {e}")
+            return "Please proceed with caution and use your best judgment."
+
+# Initialize components
+detector = ObjectDetector()
+describer = SceneDescriber()
+navigator = NavigationAssistant()
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()})
+
+@app.route('/process_frame', methods=['POST'])
+def process_frame():
+    """Main endpoint to process video frame"""
+    try:
+        # Get base64 encoded frame from request
+        data = request.json
+        if 'frame' not in data: # type: ignore
+            return jsonify({'error': 'No frame data provided'}), 400
+        
+        # Decode base64 frame
+        frame_data = base64.b64decode(data['frame']) # type: ignore
+        nparr = np.frombuffer(frame_data, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if frame is None:
+            return jsonify({'error': 'Invalid frame data'}), 400
+        
+        # Process frame
+        detections = detector.detect_objects(frame)
+        scene_description = describer.create_scene_description(detections, frame.shape)
+        navigation_guidance = navigator.get_navigation_guidance(scene_description)
+        
+        # Prepare response
+        response_data = {
+            'timestamp': datetime.now().isoformat(),
+            'detections_count': len(detections),
+            'scene_description': scene_description,
+            'navigation_guidance': navigation_guidance,
+            'detections': detections[:5]  # Return top 5 most important detections
+        }
+        
+        return jsonify(response_data)
+    
+    except Exception as e:
+        logging.error(f"Error processing frame: {e}")
+        return jsonify({'error': 'Frame processing failed'}), 500
+
+@app.route('/update_weights', methods=['POST'])
+def update_weights():
+    """Update obstacle importance weights"""
+    try:
+        data = request.json
+        if 'weights' not in data: # type: ignore
+            return jsonify({'error': 'No weights data provided'}), 400
+        
+        # Update weights
+        for obj_class, weight in data['weights'].items(): # type: ignore
+            if isinstance(weight, (int, float)) and 0 <= weight <= 10:
+                OBSTACLE_WEIGHTS[obj_class] = weight # type: ignore
+        
+        return jsonify({'message': 'Weights updated successfully', 'current_weights': OBSTACLE_WEIGHTS})
+    
+    except Exception as e:
+        logging.error(f"Error updating weights: {e}")
+        return jsonify({'error': 'Weight update failed'}), 500
+
+if __name__ == '__main__':
+    print("Starting Flask server...")
+    print("Make sure Ollama is running with the model loaded!")
+    print("Test with: curl -X GET http://localhost:5000/health")
+    app.run(debug=True, host='0.0.0.0', port=5000, threaded=True)

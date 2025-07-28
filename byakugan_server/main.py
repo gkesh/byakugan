@@ -7,8 +7,8 @@ import logging
 
 from agents.temporal_ctx_manager import TemporalContextManager
 from agents.navigation_assistant import NavigationAssistant
-from agents.object_detector import AdvancedObjectDetector as ObjectDetector
-from agents.scene_describer import AdvancedSceneDescriber as SceneDescriber
+from agents.object_detector import ObjectDetector
+from agents.scene_describer import SceneDescriber
 
 
 app = Flask(__name__)
@@ -82,7 +82,7 @@ def process_frame():
         
         # Process frame
         detections = detector.detect_objects(frame)
-        scene_description = describer.create_scene_description(detections, frame.shape)
+        scene_description = describer.create_scene_description(detections)
         navigation_guidance = navigator.get_navigation_guidance(scene_description, detections)
         
         # Prepare response

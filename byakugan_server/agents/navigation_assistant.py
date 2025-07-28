@@ -12,13 +12,12 @@ class NavigationAssistant:
         
     
     def get_navigation_guidance(self, scene_description, detections):
-        """Get navigation guidance from local LLM with temporal context"""
         # Get temporal context
         temporal_context = self.context_manager.get_context_for_prompt()
         trend_analysis = self.context_manager.get_trend_analysis()
         
         # Build enhanced prompt with context
-        prompt = self._build_contextual_prompt(scene_description, temporal_context, trend_analysis, json.dumps(detections))
+        prompt = self._build_contextual_prompt(scene_description, temporal_context, trend_analysis)
         
         payload = {
             "model": MODEL_NAME,
@@ -48,15 +47,26 @@ class NavigationAssistant:
             return "Please proceed with caution and use your best judgment."
     
     def _build_contextual_prompt(self, current_scene, temporal_context, trend_analysis, details = None):
-        """Build a contextual prompt with temporal awareness"""
-        base_prompt = f"""You are a obstacle avoidance assisstant someone who is visually impaired and cannot see anything. You provide short, clear, and casual directions on how to safely navigate around obstacles. And do not greet the user, just give instructions.
+        base_prompt = f"""You are a obstacle avoidance assisstant for someone who is visually impaired and cannot see anything. You provide short, clear, and casual directions on how to safely navigate around obstacles. And do not greet the user, just give instructions.
+
+IMPORTANT!! - Remember the person using this app is blind, so do not use phrases like:
+- Keep an eye out
+- Look out
+- Take a look
+- See
+
+Instead use phrases like:
+- Keep an ear out
+- Try and listen for
+- Listen
+
+Be sensitive
 
 {temporal_context}
 
-Current scene: {current_scene}"""
+Remember the context provided above are past instructions only to be used as reference to give the conversation more flavor. Do not depend on it for navigation. Make sure to avoid repeating phrases and sentences that you have already used based on the context information provided above, do not be robotic.
 
-        if details:
-            base_prompt += f"\n\n Here is a detailed list of items on in front of the user, use this to formulate better instructions. \n {details}"
+Current scene: {current_scene}"""
         
         # Add trend-based context if available
         if trend_analysis:
@@ -79,7 +89,11 @@ Current scene: {current_scene}"""
 2. Is encouraging and supportive
 3. Is single or two short sentences maximum
 4. Focuses on immediate next steps
-5. If there is immediate obstacle, just say 'stop'
+
+Some things to keep in mind when generating instructions.
+1. If there is immediate obstacle, tell the person to be careful.
+2. If the obstacle is not too critical, just ask the user to proceed slowly.
+3. If and only if the situation seems too complex and chaotic, gently tell them to stop and reassess.
 
 Most importantly, you are not helping them get to some place, you are helping them avoid obstacles on the way.
 

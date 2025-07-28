@@ -9,7 +9,6 @@ class TemporalContextManager:
         self._lock = threading.Lock()
 
     def add_navigation_session(self, scene_description, navigation_guidance, detections):
-        """Add a new navigation session to history"""
         with self._lock:
             session = {
                 'timestamp': datetime.now().isoformat(),
@@ -21,7 +20,6 @@ class TemporalContextManager:
             self.navigation_history.append(session)
 
     def get_context_for_prompt(self):
-        """Get formatted context for LLM prompt"""
         with self._lock:
             if not self.navigation_history:
                 return "This is the first navigation request."
@@ -39,10 +37,9 @@ class TemporalContextManager:
                     f"(Guidance given: {session['navigation_guidance']})"
                 )
             
-            return "Recent navigation context:\n" + "\n".join(context_parts)
+            return "Past navigation context:\n" + "\n".join(context_parts)
 
     def get_trend_analysis(self):
-        """Analyze trends in recent navigation history"""
         with self._lock:
             if len(self.navigation_history) < 2:
                 return None
@@ -76,6 +73,5 @@ class TemporalContextManager:
             }
 
     def clear_history(self):
-        """Clear navigation history"""
         with self._lock:
             self.navigation_history.clear()

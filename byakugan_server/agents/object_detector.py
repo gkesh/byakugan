@@ -10,7 +10,9 @@ class ObjectDetector:
         self.weights = weights
     
     def detect_objects(self, frame):
-        """Detect objects in frame and return results with importance scores"""
+        """
+        Detect objects in frame and return results with weighted importance scores
+        """
         results = self.model(frame, conf=0.3, verbose=False)
         detections = []
         
@@ -50,12 +52,11 @@ class ObjectDetector:
         return sorted(detections, key=lambda x: x['importance'], reverse=True)
     
     def _get_position_description(self, x, y):
-        """Convert normalized coordinates to position description"""
         horizontal = "center"
         if x < 0.33:
-            horizontal = "left"
-        elif x > 0.67:
             horizontal = "right"
+        elif x > 0.67:
+            horizontal = "left"
         
         vertical = "middle"
         if y < 0.33:

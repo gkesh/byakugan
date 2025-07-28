@@ -2,7 +2,6 @@ import numpy as np
 
 class SceneDescriber:
     def create_scene_description(self, detections):
-        """Create a comprehensive scene description from detections"""
         if not detections:
             return "The path ahead appears clear with no significant obstacles detected."
         
@@ -29,7 +28,6 @@ class SceneDescriber:
         return " ".join(description_parts)
     
     def _describe_obstacles(self, obstacles, priority_level):
-        """Describe a group of obstacles"""
         if not obstacles:
             return ""
         
@@ -43,9 +41,8 @@ class SceneDescriber:
         return f"{priority_text}Detected {', '.join(descriptions)}."
 
 
-class AdvancedSceneDetector:
+class AdvancedSceneDescriber:
     def create_scene_description(self, detections, frame_shape):
-        """Create a comprehensive scene description from detections including trajectory info"""
         if not detections:
             return "The path ahead appears clear with no significant obstacles detected."
         
@@ -99,7 +96,6 @@ class AdvancedSceneDetector:
         return " ".join(description_parts)
     
     def _describe_obstacles_with_trajectory(self, obstacles, priority_level, frame_width, frame_height):
-        """Describe obstacles including their trajectory information"""
         if not obstacles:
             return ""
         
@@ -138,7 +134,6 @@ class AdvancedSceneDetector:
         return f"{priority_text}Detected {', '.join(descriptions)}."
     
     def _create_movement_summary(self, moving_objects, frame_height):
-        """Create a summary of object movements using frame dimensions"""
         if not moving_objects:
             return ""
         
@@ -171,7 +166,6 @@ class AdvancedSceneDetector:
         return "Movement analysis: " + "; ".join(summary_parts) + "." if summary_parts else ""
     
     def _analyze_spatial_distribution(self, detections):
-        """Analyze how objects are distributed across the frame"""
         if len(detections) < 2:
             return ""
         
@@ -199,7 +193,6 @@ class AdvancedSceneDetector:
         return ""
     
     def _check_collision_trajectories(self, moving_objects):
-        """Check if any objects are on collision trajectories"""
         if len(moving_objects) < 1:
             return ""
         

@@ -1,7 +1,5 @@
 from ultralytics import YOLO
 
-import numpy as np
-import cv2
 
 class ObjectDetector:
     def __init__(self, weights):
